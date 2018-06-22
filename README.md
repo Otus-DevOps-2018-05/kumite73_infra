@@ -10,7 +10,7 @@ kumite73 Infra repository
 1. Запуск ssh-agent `eval $(ssh-agent -s)`
 2. Добавление приватного ключа в агент авторизации `ssh-add ~/.ssh/appuser`
 3. Добавляем команды 1 и 2 в `.bashrc`
-4. Команда для запуска `ssh -A appuser@130.211.51.235 ssh -tt 10.132.0.3`
+4. Команда для запуска `ssh -A appuser@35.233.104.183 ssh -tt 10.132.0.3`
 
 ----
 
@@ -25,8 +25,8 @@ kumite73 Infra repository
        Host someinternalhost
            HostName 10.132.0.3
            User appuser
-           ProxyCommand ssh -W %h:%p appuser@130.211.51.235
-       Host 130.211.51.235
+           ProxyCommand ssh -W %h:%p appuser@35.233.104.183
+       Host 35.233.104.183
            IdentityFile ~/.ssh/appuser
        Host 10.132.0.3
            IdentityFile ~/.ssh/appuser
@@ -37,6 +37,6 @@ kumite73 Infra repository
 
 ## OpenVPN
 
-bastion_IP = 130.211.51.235
+bastion_IP = 35.233.104.183
 
 someinternalhost_IP = 10.132.0.3
