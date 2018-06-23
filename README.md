@@ -40,3 +40,10 @@ kumite73 Infra repository
 bastion_IP = 35.233.104.183
 
 someinternalhost_IP = 10.132.0.3
+
+## TestApp
+
+testapp_IP = 35.195.200.0
+
+testapp_port = 9292
+
