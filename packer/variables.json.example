@@ -1,0 +1,10 @@
+{
+  "project_id": "infra-111111",
+  "source_image_family": "ubuntu-1604-lts",
+  "machine_type": "f1-micro",
+  "disk_size": "10",
+  "disk_type": "pd-standard",
+  "tags": "http-server,https-server,puma-server",
+  "network": "default",
+  "image_description": "The first app on Ruby and Mongo"
+}
