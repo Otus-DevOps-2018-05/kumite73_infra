@@ -64,13 +64,13 @@ testapp_port = 9292
 
 ## Terraform-1
 Определяем секцию провайдер
-`
-provider "google" {
-version = "1.4.0"
-project = "steam-strategy-174408"
-region = "europe-west1"
-}
-`
+
+    provider "google" {
+	version = "1.4.0"
+	project = "steam-strategy-174408"
+	region = "europe-west1"
+    }
+
 Инициализируем `terraform init`
 Добавляем ресурс для создания инстанса VM в GCP
 Устанавливаем семейство образов `image = "reddit-base"`
@@ -90,30 +90,30 @@ region = "europe-west1"
 Используем input переменные
 
 Добавляем переменную для приватного ключа
-`
-variable "private_key_path" {
-  description = "Private key path for provisiners to connect via ssh"
-}
 
-`
+    variable "private_key_path" {
+	description = "Private key path for provisiners to connect via ssh"
+    }
+
 Определяем input переменную для задания зоны
-`
-variable "zone" {
-  description = "Zone"
-  default     = "europe-west1-b"
-}
-`
+
+    variable "zone" {
+	description = "Zone"
+	default     = "europe-west1-b"
+    }
+
 Форматируем конфигурацию `terraform fmt`
 Создаем файл `terraform.tfvars.example`
 
 ### Задание со *
 Добавляем ключи для 2 пользователей 
-`resource "google_compute_project_metadata" "default" {
-  metadata {
-    ssh-keys = "appuser1:${file(var.public_key_path)} appuser2:${file(var.public_key_path)}"
-  }
-}
-`
+
+    resource "google_compute_project_metadata" "default" {
+	metadata {
+	    ssh-keys = "appuser1:${file(var.public_key_path)} appuser2:${file(var.public_key_path)}"
+	}
+    }
+
 Добавляем в веб-интерфейсе ключ для `appuser_web`
 Выпролняем `terraform apply` и наш ключ добавленный в веб интерфейсе затирается. Осиаются только ключи описанные в terraform,
 
@@ -124,18 +124,18 @@ variable "zone" {
 Ресурс для пула инстансов `resource "google_compute_target_pool" "target-pool"
 Ресурс для правила прoброса `resource "google_compute_forwarding_rule" "forwarding-rule"`
 Задана output переменная для внешнего адреса балансировщика 
-`
-output "forwarding_rule_ip" {
-  value = "${google_compute_forwarding_rule.forwarding-rule.ip_address}"
-}
-`
+
+    output "forwarding_rule_ip" {
+	value = "${google_compute_forwarding_rule.forwarding-rule.ip_address}"
+    }
+
 Задана переменная для кол-ва VM
-`
-variable "count" {
-  description = "number of VM instance"
-  default = 1
-}
-`
+
+    variable "count" {
+	description = "number of VM instance"
+	default = 1
+    }
+
 Изменение имени VM от переменной `count` `name = "reddit-app${count.index}"
 
 Главная проблема данной конфигурации: MongoDB создается для каждой VM внутри. Чтобы решить данную проблему, нужен отдельный инстанс с MongoDB, чтобы фронты имели одинаковую информацию из БД.
