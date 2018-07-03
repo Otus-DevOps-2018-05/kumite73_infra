@@ -139,3 +139,88 @@ testapp_port = 9292
 Изменение имени VM от переменной `count` `name = "reddit-app${count.index}"
 
 Главная проблема данной конфигурации: MongoDB создается для каждой VM внутри. Чтобы решить данную проблему, нужен отдельный инстанс с MongoDB, чтобы фронты имели одинаковую информацию из БД.
+
+## Terraform-2
+Определяем ресур файервал
+
+    resource "google_compute_firewall" "firewall_ssh" {
+	name = "default-allow-ssh"
+	network = "default"
+	
+	allow {
+	    protocol = "tcp"
+	    ports = ["22"]
+	}
+    source_ranges = ["0.0.0.0/0"]
+    }
+
+Импортируем существующую инфраструктуру `terraform import google_compute_firewall.firewall_ssh default-allow-ssh`
+Зададим IP для инстанса с приложением в виде внешнего ресурса
+
+    resource "google_compute_address" "app_ip" {
+	name = "reddit-app-ip"
+    }
+Ссылаемся на атрибуты другого ресурса
+
+    network_interface {
+	network = "default"
+	access_config = {
+	    nat_ip = "${google_compute_address.app_ip.address}"
+	}
+    }
+
+Создаем две VM `app.tf db.tf`
+Создаем правила для FW `vpc.tf`
+В папке `modules/` создаем модули `app db vcs`
+Меняем `main.tf` на использование модулей
+Вызываем `terraform get` для загрузки модулей 
+Получаем `output` переменные из модуля
+
+    output "app_external_ip" {
+	value = "${module.app.app_external_ip}"
+    }
+
+Создаем `Stage & Prod` и меняем пути к модулям на `../modules/xxx`
+Создаем `storage-bucket.tf`
+
+    provider "google" {
+	version = "1.4.0"
+	project = "${var.project}"
+	region = "${var.region}"
+    }
+    module "storage-bucket" {
+	source = "SweetOps/storage-bucket/google"
+	version = "0.1.1"
+	name = ["storage-bucket-test", "storage-bucket-test2"]
+    }
+    output storage-bucket_url {
+	value = "${module.storage-bucket.url}"
+    }
+
+Создаем  `variables.tf terraform.tfvars`
+
+### Параметризуем конфигурацию модулей
+
+В модули добавляем переменные, чтобы была возможность создания не перескающихся IS (оставлены только новые или измененыее переменные)
+
+    module "app" {
+	app_name                   = "reddit-app-stage"
+	tags                       = ["reddit-app-stage"]
+	reddit_app_ip_name         = "reddit-app-stage-ip"
+	firewall_puma_name         = "firefall-puma-stage"
+	firewall_puma_source_range = ["0.0.0.0/0"]
+	firewall_puma_target_tags  = ["reddit-app-stage"]
+    }
+
+    module "db" {
+	db_name                    = "reddit-db-stage"
+	tags                       = ["reddit-db-stage"]
+	firewall_mongo_name        = "firefall-mongo-stage"
+	firewall_mongo_source_tags = ["reddit-app-stage"]
+	firewall_mongo_target_tags = ["reddit-db-stage"]
+    }
+
+    module "vpc" {
+	name_ssh      = "ssh-for-stage"
+    }
+
