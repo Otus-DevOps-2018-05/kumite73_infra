@@ -226,8 +226,11 @@ testapp_port = 9292
 
 ## Ansible-1
 
-Устанавливаем ansible `easy_install `cat requirements.txt``
-Прверяем версию `ansible --version` результат `ansible 2.6.0`
+Устанавливаем ansible 
+
+    easy_install `cat requirements.txt`
+
+Проверяем версию `ansible --version` результат `ansible 2.6.0`
 Добавляем `output` переменную для терраформа в модуль `db`
 
     output "db_external_ip" {
@@ -348,7 +351,7 @@ testapp_port = 9292
     end
 
 Выдаем права на запуск `chmod +x inventory.rb`
-Резудьтат работы `ansible all -i ./inventory.rb -m ping`
+Результат работы `ansible all -i ./inventory.rb -m ping`
 
     35.240.108.228 | SUCCESS => {
 	"changed": false,
