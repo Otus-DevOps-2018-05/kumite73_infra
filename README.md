@@ -405,3 +405,181 @@ testapp_port = 9292
 	"ping": "pong"
     }
 
+
+
+## Ansible-2
+
+Добавляем в модуль terraform db output переменную 
+
+    output "db_internal_ip" {
+	value = "${google_compute_instance.db.network_interface.0.address}"
+    }
+
+Добавляем в stage output переменную 
+
+    output "db_internal_ip" {
+	value = "${module.db.db_internal_ip}"
+    }
+
+Создаем файл reddit_app.yml
+
+Делаем сценарий для Монго
+
+    ---
+    - name: Configure hosts & deploy application
+      hosts: all
+      tasks:
+        - name: Change mongo config file
+          become: true
+	  template:
+            src: templates/mongod.conf.j2
+            dest: /etc/mongod.conf
+            mode: 0644
+
+Добавялем тег в задачу, чтобы была возможность запускать по тегу `tags: db-tag`
+Создаем директорию `templates`
+Создаем шаблон `mongod.conf.j2`
+Работа с переменными в шаблоне
+
+    # network interfaces
+    net:
+      port: {{ mongo_port | default('27017') }}
+      bindIp: {{ mongo_bind_ip }}
+
+Проверка конфигурации для хостов из группы DB `ansible-playbook reddit_app.yml --check --limit db`
+Задаем переменную IP адрес для монго
+
+    - name: Configure hosts & deploy application
+      hosts: all
+      vars:
+        mongo_bind_ip: 0.0.0.0
+
+Работа с handler. Добаввялем в task оповещение `notify: restart mongod`
+Описываем handler
+
+    handlers:
+      - name: restart mongod
+        become: true
+        service: name=mongod state=restarted
+
+Применим плейбук `ansible-playbook reddit_app.yml --limit db`
+
+Создаем директорию `files`
+Создаем файл `puma.service`
+
+    [Unit]
+    Description=Puma HTTP Server
+    After=network.target
+
+    [Service]
+    Type=simple
+    EnvironmentFile=/home/appuser/db_config
+    User=appuser
+    WorkingDirectory=/home/appuser/reddit
+    ExecStart=/bin/bash -lc 'puma'
+    Restart=always
+
+    [Install]
+    WantedBy=multi-user.target
+
+Создаем таск для копирования unit файла на хост приложения. Используем модуль `copy` и модуль `systemd` для перезапуска пумы.
+
+    - name: Add unit file for Puma
+      become: true
+      copy:
+	src: files/puma.service
+	dest: /etc/systemd/system/puma.service
+      tags: app-tag
+      notify: reload puma
+
+    - name: enable puma
+      become: true
+      systemd: name=puma enabled=yes
+      tags: app-tag
+
+Создаем шаблон `db_config.j2`
+
+    DATABASE_URL={{ db_host }}
+
+Добавляем таск для копирования созданного шаблона:
+
+    - name: Add config for DB connection
+      template:
+	src: templates/db_config.j2
+	dest: /home/appuser/db_config
+      tags: app-tag
+
+Задаем переменную `db_host: 10.132.0.2`
+Адрем берем из output переменной
+Применяем таски `ansible-playbook reddit_app.yml --limit app --tags app-tag`
+Создаем таски для деплоя кода
+
+    - name: Fetch the latest version of application code
+      git:
+	repo: 'https://github.com/express42/reddit.git'
+	dest: /home/appuser/reddit
+	version: monolith
+      tags: deploy-tag
+      notify: reload puma
+
+    - name: Bundle install
+      bundler:
+	state: present
+	chdir: /home/appuser/reddit
+      tags: deploy-tag
+
+Выполняем деплой `ansible-playbook reddit_app.yml --limit app --tags deploy-tag`
+Создаем новый файл `reddit_app2.yml`
+
+Копируем определение сценария из `reddit_app.yml` и всю информацию, относящуюся к настройке MongoDB, которая будет включать в себя таски, хендлеры и переменные
+Выносим `become: true` на уровень сценария для того, чтобы все команды вызывались из под `root`
+Аналогично делаем для `reddit_app2.yml`
+Пересоздаем инфраструктуру. Для этого я создал 2 альяса ta и td. Чтобы упростить работу с терраформ.
+Применяем сценарий `ansible-playbook reddit_app2.yml --tags db-tag`
+Применяем сценарий `ansible-playbook reddit_app2.yml --tags app-tag`
+Создаем сценарий для деплоя в `reddit_app2.yml`
+Выполянем `ansible-playbook reddit_app2.yml --tags deploy-tag`
+Переименуем предыдущие плейбуки:
+
+    reddit_app.yml -> reddit_app_one_play.yml
+    reddit_app2.yml-> reddit_app_multiple_plays.yml
+
+Создаем файлы `app.yml, db.yml, deploy.yml`
+Заполняем файлы из `Из файла reddit_app_multiple_plays.yml`
+Убираем теги
+Создаем файл `site.yml`
+
+    ---
+    - include: db.yml
+    - include: app.yml
+    - include: deploy.yml
+
+P.S. Начиная с версии 2.4 инструкцию `include` можно заменить на `import_playbook`
+Пересоздаем инфраструктуру `td ta`
+Выполняем `ansible-playbook site.yml`
+Создаем на основе плейбуки `ansible/packer_app.yml` и `ansible/packer_db.yml`
+Интегрируем Ansible в Packer
+Заменим секцию Provision в образе `packer/app.json` на Ansible
+
+    "provisioners": [
+	{
+	    "type": "ansible",
+	    "playbook_file": "ansible/packer_app.yml"
+	}
+    ]
+
+Такие же изменения выполним и для `packer/db.json`
+
+    "provisioners": [
+	{
+	    "type": "ansible",
+	    "playbook_file": "ansible/packer_db.yml"
+	}
+    ]
+
+Запускаем проверку app паркер `packer validate -var-file=packer/variables.json packer/app.json`
+Запускаем build app паркер `packer build -var-file=packer/variables.json packer/app.json`
+Запускаем проверку adb паркер `packer validate -var-file=packer/variables.json packer/db.json`
+Запускаем build app паркер `packer build -var-file=packer/variables.json packer/db.json`
+Проверяем образы через `stage`
+
