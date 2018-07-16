@@ -1,0 +1,29 @@
+Downloading/unpacking ansible
+  Running setup.py (path:/tmp/pip_build_root/ansible/setup.py) egg_info for package ansible
+    
+    no previously-included directories found matching 'hacking'
+Downloading/unpacking jinja2 (from ansible)
+Requirement already satisfied (use --upgrade to upgrade): PyYAML in /usr/lib/python2.7/dist-packages (from ansible)
+Downloading/unpacking paramiko (from ansible)
+Downloading/unpacking cryptography (from ansible)
+  Running setup.py (path:/tmp/pip_build_root/cryptography/setup.py) egg_info for package cryptography
+    Traceback (most recent call last):
+      File "<string>", line 17, in <module>
+      File "/tmp/pip_build_root/cryptography/setup.py", line 28, in <module>
+        "cryptography requires setuptools 18.5 or newer, please upgrade to a "
+    RuntimeError: cryptography requires setuptools 18.5 or newer, please upgrade to a newer version of setuptools
+    Complete output from command python setup.py egg_info:
+    Traceback (most recent call last):
+
+  File "<string>", line 17, in <module>
+
+  File "/tmp/pip_build_root/cryptography/setup.py", line 28, in <module>
+
+    "cryptography requires setuptools 18.5 or newer, please upgrade to a "
+
+RuntimeError: cryptography requires setuptools 18.5 or newer, please upgrade to a newer version of setuptools
+
+----------------------------------------
+Cleaning up...
+Command python setup.py egg_info failed with error code 1 in /tmp/pip_build_root/cryptography
+Storing debug log for failure in /home/kumite/.pip/pip.log
