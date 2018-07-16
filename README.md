@@ -709,4 +709,41 @@ P.S. Начиная с версии 2.4 инструкцию `include` можн�
       debug:
       msg: "This host is in {{ env }} environment!!!"
 
+Организуем плейбуки
+Улучшим `ansible.cfg`
+
+    [defaults]
+    inventory = ./environments/stage/inventory
+    remote_user = appuser
+    private_key_file = ~/.ssh/appuser
+    host_key_checking = False
+    retry_files_enabled = False
+    roles_path = ./roles
+    [diff]
+    always = True
+    context = 5
+
+Пересоздаем `stage`
+Изменяем внешние IP адреса инстансов в инвентори файле `ansible/environments/stage/inventory` и переменную `db_host` в `stage/group_vars/app`
+
+Проверяем и применяем роли
+
+    ansible-playbook playbooks/site.yml --check
+    ansible-playbook playbooks/site.yml
+
+
+Удаляем `stage`
+СОздаем `prod`
+Изменяем внешние IP адреса инстансов в инвентори файле `ansible/environments/prod/inventory` и переменную `db_host` в `prod/group_vars/app`
+
+Проверяем и применяем роли
+
+    ansible-playbook -i environments/prod/inventory playbooks/site.yml --check
+    ansible-playbook -i environments/prod/inventory playbooks/site.yml
+
+
+
+    ansible-playbook playbooks/site.yml --check
+    ansible-playbook playbooks/site.yml
+
 
