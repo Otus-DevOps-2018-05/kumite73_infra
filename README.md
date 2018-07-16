@@ -583,3 +583,130 @@ P.S. Начиная с версии 2.4 инструкцию `include` можн�
 Запускаем build app паркер `packer build -var-file=packer/variables.json packer/db.json`
 Проверяем образы через `stage`
 
+### Ansible-3
+
+Создаем директорию `roles`
+Создаем роли
+
+    ansible-galaxy init app
+    ansible-galaxy init db
+
+Переносим таски из db.yml в `db/tasks/main.yml` убираем путь в  src и копируем шаблон `mongod.conf.j2` в `db/templates`
+
+    ---
+    # tasks file for db
+      - name: Change mongo config file
+	template:
+          src: mongod.conf.j2
+          dest: /etc/mongod.conf
+	mode: 0644
+	notify: restart mongod
+
+Копируем данные их хендлера в `db/handlers/main.yml`
+
+    - name: restart mongod
+      service: name=mongod state=restarted
+
+Определяем используемые в шаблоне переменные в секции переменных по умолчанию `db/defaults/main.yml`
+
+    ---
+    # defaults file for db
+    mongo_port: 27017
+    mongo_bind_ip: 127.0.0.1
+
+
+Переносим таски из app.yml в `app/tasks/main.yml` убираем путь в src и копируем шаблон `db_conf.j2` в `app/templates`  `puma.service` в `app/files`
+
+    - name: Add unit file for Puma
+      copy:
+	src: puma.service
+	dest: /etc/systemd/system/puma.service
+      notify: reload puma
+
+    - name: Add config for DB connection
+      template:
+	src: db_config.j2
+	dest: /home/appuser/db_config
+	owner: appuser
+	group: appuser
+
+    - name: enable puma
+      systemd: name=puma enabled=yes
+
+Копируем данные их хендлера в `app/handlers/main.yml`
+
+    - name: reload puma
+      systemd: name=puma state=restarted
+
+
+Определяем используемые в шаблоне переменные в секции переменных по умолчанию `app/defaults/main.yml`
+
+    ---
+    # defaults file for app
+    db_host: 127.0.0.1
+
+Меняем `ansible/app.yml` для вызова ролей
+
+    ---
+    - name: Configure App
+      hosts: app
+      become: true
+      vars:
+	db_host: 10.132.0.2
+      roles:
+	- app
+
+Меняем `ansible/db.yml` для вызова ролей
+
+    ---
+    - name: Configure MongoDB
+      hosts: db
+      become: true
+      vars:
+	mongo_bind_ip: 0.0.0.0
+      roles:
+	- db
+
+Пересоздадим инфраструктуру окружения `stage`
+Проверяем и применяем роли
+
+    ansible-playbook site.yml --check
+    ansible-playbook site.yml
+
+Создаем директорию `environments` внтури 2 директории stage и prod
+Копируем инвентори файл `ansible/inventory` в каждую из директорий окружения `environtents/prod` и `environments/stage` удаляем `inventory`
+Изменяем окружение по умолчанию в `ansible.cfg`
+
+    inventory = ./environments/stage/inventory
+
+Создаем директорию `group_vars` в директориях окружений `environments/prod` и `environments/stage`
+Создаем файл `stage/group_vars/app` для определения переменных для группы хостов `app`, описанных в инвентори файле `stage/inventory`
+
+    db_host: 10.132.0.2
+
+Удаляем `ansible/app.yml`
+Создаем файл `stage/group_vars/db` для определения переменных для группы хостов `db`, описанных в инвентори файле `stage/inventory`
+
+    mongo_bind_ip: 0.0.0.0
+
+Удаляем `ansible/db.yml`
+Создаем файл `stage/group_vars/all`
+
+    env: stage
+
+Настраиваем `prod` копируем файлы `app, db, all` из директории `stage/group_vars` в директорию `prod/group_vars`
+Меняем файл `all`
+
+    env: prod
+
+Определияем переменную по умолчанию `env` в используемых ролях `ansible/roles/app/defaults/main.yml`  и  `ansible/roles/db/defaults/main.yml`
+
+    env: local
+
+Вывод названия окружения. Добавляем в `tasks/main.yml` в начало для ролей `app и db`
+
+    - name: Show info about the env this host belongs to
+      debug:
+      msg: "This host is in {{ env }} environment!!!"
+
+
