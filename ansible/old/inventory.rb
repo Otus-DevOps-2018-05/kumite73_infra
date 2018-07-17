@@ -7,8 +7,8 @@ require 'json'
 $VERBOSE=nil
 
 begin
-  app_ip, stderr_str, status = Open3.capture3("cd ~/kumite73_infra/terraform/stage; terraform output app_external_ip;")
-  db_ip,  stderr_str, status = Open3.capture3("cd ~/kumite73_infra/terraform/stage; terraform output db_external_ip;")
+  app_ip, stderr_str, status = Open3.capture3("cd ../terraform/stage; terraform output app_external_ip;")
+  db_ip,  stderr_str, status = Open3.capture3("cd ../terraform/stage; terraform output db_external_ip;")
   if ARGV[0] == '--list'
     j = {app: {hosts: [app_ip.strip]}, 
          db:  {hosts: [db_ip.strip]},
