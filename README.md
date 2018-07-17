@@ -852,3 +852,9 @@ P.S. Начиная с версии 2.4 инструкцию `include` можн�
 
 ### Задание *
 
+Изменен скрипт `inventory.rb` сделана проверка в каком окружении он запущен и исходя из этого, берутся нужные переменны из терраформ.
+Скрипт помещен в `environments/stage/` и `environments/prod/`
+Запуск
+
+    ansible-playbook -i ./environments/stage/inventory.rb playbooks/site.yml
+    ansible-playbook -i ./environments/prod/inventory.rb playbooks/site.yml
