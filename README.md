@@ -741,9 +741,114 @@ P.S. Начиная с версии 2.4 инструкцию `include` можн�
     ansible-playbook -i environments/prod/inventory playbooks/site.yml --check
     ansible-playbook -i environments/prod/inventory playbooks/site.yml
 
+Создадим файлы `environments/stage/requirements.yml` и `environments/prod/requirements.yml`
 
+    ---
+    - src: jdauphant.nginx
+      version: v2.18.1
 
-    ansible-playbook playbooks/site.yml --check
+Установим роль: `ansible-galaxy install -r environments/stage/requirements.yml`
+
+Поучили ошибку:
+
+    Failed to get data from the API server (https://galaxy.ansible.com/api/): Failed to validate the SSL certificate for galaxy.ansible.com:443. Make sure your managed systems have a valid CA certificate installed
+
+Решаем проблему:
+
+    sudo python -m pip install pip==9.0.1
+    sudo pip install -U urllib3[secure]
+
+Изменим `.gitignore` добавимм строку `jdauphant.nginx`
+Открываем 80 порт `terraform\satge\main.yml` и `terraform\prod\main.yml` добавляем тег `http-server`
+
+    module "app" {
+	...
+	tags                       = ["reddit-app-stage", "http-server"]
+	...
+    }
+
+Применяем инфрраструктуру
+Добавляем переменные для `jdauphant.nginx` в `stage/group_vars/app и prod/group_vars/app`
+
+    jdauphant_nginx_listen_port: 80
+    jdauphant_nginx_server_name: reddit
+    jdauphant_nginx_proxy_pass_port: 9292
+
+Добавляем запуск роли в `playbooks/app.yml`
+
+    roles:
+      - app
+      - jdauphant.nginx
+        nginx_sites:
+          default:
+            - listen {{ jdauphant_nginx_listen_port }}
+            - server_name {{ jdauphant_nginx_server_name }}
+            - |
+              location / {
+                proxy_pass http://127.0.0.1:{{ jdauphant_nginx_proxy_pass_port }};
+              }
+
+При проверке выдает ошибку
+
+    failed: [appserver] (item={'value': [u'listen 80', u'server_name reddit', u'location / {\n  proxy_pass http://127.0.0.1:9292;\n}\n'], 'key': u'default'}) => {"changed": false, "item": {"key": "default", "value": ["listen 80", "server_name reddit", "location / {\n  proxy_pass http://127.0.0.1:9292;\n}\n"]}, "msg": "src file does not exist, use \"force=yes\" if you really want to create the link: /etc/nginx/sites-available/default.conf", "path": "/etc/nginx/sites-enabled/default.conf", "src": "/etc/nginx/sites-available/default.conf", "state": "absent"}
+
+При прямом запуске все проходит успешно
+
+### Работа с Ansible Vault
+Создаем `vault.key`
+Добавляем в `ansible.cfg`
+
+    [defailt]
+    ...
+    vault_password_file = vault.key
+
+Создаем плейбук для создания пользователей `ansible/playbooks/users.yml`
+
+    ---
+    - name: Create users
+      hosts: all
+      become: true
+
+      vars_files:
+	- "{{ inventory_dir }}/credentials.yml"
+
+      tasks:
+	- name: create users
+          user:
+    	    name: "{{ item.key }}"
+    	    password: "{{ item.value.password|password_hash('sha512', 65534|random(seed=inventory_hostname)|string) }}"
+    	    groups: "{{ item.value.groups | default(omit) }}"
+    	  with_dict: "{{ credentials.users }}"
+
+Создаем файл `ansible/environments/prod/credentials.yml`
+
+    ---
+    credentials:
+	users:
+	    admin:
+    	    password: admin123
+    	    groups: sudo
+
+Создаем файл `ansible/environments/stage/credentials.yml`
+
+    ---
+    credentials:
+	users:
+	    admin:
+    	    password: qwerty123
+    	    groups: sudo
+
+    qauser:
+      password: test123
+
+Шифруем файлы
+
+    ansible-vault encrypt environments/prod/credentials.yml
+    ansible-vault encrypt environments/stage/credentials.yml
+
+Применяем конфигурацию
+
     ansible-playbook playbooks/site.yml
 
+### Задание *
 

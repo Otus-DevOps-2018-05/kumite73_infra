@@ -1,1 +1,4 @@
 db_host: 10.132.0.2
+jdauphant_nginx_listen_port: 80
+jdauphant_nginx_server_name: reddit
+jdauphant_nginx_proxy_pass_port: 9292

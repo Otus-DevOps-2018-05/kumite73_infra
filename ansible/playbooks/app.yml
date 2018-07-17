@@ -4,3 +4,12 @@
   become: true
   roles:
     - app
+    - role: jdauphant.nginx
+      nginx_sites:
+        default:
+          - listen {{ jdauphant_nginx_listen_port }}
+          - server_name {{ jdauphant_nginx_server_name }}
+          - |
+            location / {
+              proxy_pass http://127.0.0.1:{{ jdauphant_nginx_proxy_pass_port }};
+            }
