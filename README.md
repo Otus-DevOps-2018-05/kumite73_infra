@@ -583,3 +583,278 @@ P.S. Начиная с версии 2.4 инструкцию `include` можн�
 Запускаем build app паркер `packer build -var-file=packer/variables.json packer/db.json`
 Проверяем образы через `stage`
 
+### Ansible-3
+
+Создаем директорию `roles`
+Создаем роли
+
+    ansible-galaxy init app
+    ansible-galaxy init db
+
+Переносим таски из db.yml в `db/tasks/main.yml` убираем путь в  src и копируем шаблон `mongod.conf.j2` в `db/templates`
+
+    ---
+    # tasks file for db
+      - name: Change mongo config file
+	template:
+          src: mongod.conf.j2
+          dest: /etc/mongod.conf
+	mode: 0644
+	notify: restart mongod
+
+Копируем данные их хендлера в `db/handlers/main.yml`
+
+    - name: restart mongod
+      service: name=mongod state=restarted
+
+Определяем используемые в шаблоне переменные в секции переменных по умолчанию `db/defaults/main.yml`
+
+    ---
+    # defaults file for db
+    mongo_port: 27017
+    mongo_bind_ip: 127.0.0.1
+
+
+Переносим таски из app.yml в `app/tasks/main.yml` убираем путь в src и копируем шаблон `db_conf.j2` в `app/templates`  `puma.service` в `app/files`
+
+    - name: Add unit file for Puma
+      copy:
+	src: puma.service
+	dest: /etc/systemd/system/puma.service
+      notify: reload puma
+
+    - name: Add config for DB connection
+      template:
+	src: db_config.j2
+	dest: /home/appuser/db_config
+	owner: appuser
+	group: appuser
+
+    - name: enable puma
+      systemd: name=puma enabled=yes
+
+Копируем данные их хендлера в `app/handlers/main.yml`
+
+    - name: reload puma
+      systemd: name=puma state=restarted
+
+
+Определяем используемые в шаблоне переменные в секции переменных по умолчанию `app/defaults/main.yml`
+
+    ---
+    # defaults file for app
+    db_host: 127.0.0.1
+
+Меняем `ansible/app.yml` для вызова ролей
+
+    ---
+    - name: Configure App
+      hosts: app
+      become: true
+      vars:
+	db_host: 10.132.0.2
+      roles:
+	- app
+
+Меняем `ansible/db.yml` для вызова ролей
+
+    ---
+    - name: Configure MongoDB
+      hosts: db
+      become: true
+      vars:
+	mongo_bind_ip: 0.0.0.0
+      roles:
+	- db
+
+Пересоздадим инфраструктуру окружения `stage`
+Проверяем и применяем роли
+
+    ansible-playbook site.yml --check
+    ansible-playbook site.yml
+
+Создаем директорию `environments` внтури 2 директории stage и prod
+Копируем инвентори файл `ansible/inventory` в каждую из директорий окружения `environtents/prod` и `environments/stage` удаляем `inventory`
+Изменяем окружение по умолчанию в `ansible.cfg`
+
+    inventory = ./environments/stage/inventory
+
+Создаем директорию `group_vars` в директориях окружений `environments/prod` и `environments/stage`
+Создаем файл `stage/group_vars/app` для определения переменных для группы хостов `app`, описанных в инвентори файле `stage/inventory`
+
+    db_host: 10.132.0.2
+
+Удаляем `ansible/app.yml`
+Создаем файл `stage/group_vars/db` для определения переменных для группы хостов `db`, описанных в инвентори файле `stage/inventory`
+
+    mongo_bind_ip: 0.0.0.0
+
+Удаляем `ansible/db.yml`
+Создаем файл `stage/group_vars/all`
+
+    env: stage
+
+Настраиваем `prod` копируем файлы `app, db, all` из директории `stage/group_vars` в директорию `prod/group_vars`
+Меняем файл `all`
+
+    env: prod
+
+Определияем переменную по умолчанию `env` в используемых ролях `ansible/roles/app/defaults/main.yml`  и  `ansible/roles/db/defaults/main.yml`
+
+    env: local
+
+Вывод названия окружения. Добавляем в `tasks/main.yml` в начало для ролей `app и db`
+
+    - name: Show info about the env this host belongs to
+      debug:
+      msg: "This host is in {{ env }} environment!!!"
+
+Организуем плейбуки
+Улучшим `ansible.cfg`
+
+    [defaults]
+    inventory = ./environments/stage/inventory
+    remote_user = appuser
+    private_key_file = ~/.ssh/appuser
+    host_key_checking = False
+    retry_files_enabled = False
+    roles_path = ./roles
+    [diff]
+    always = True
+    context = 5
+
+Пересоздаем `stage`
+Изменяем внешние IP адреса инстансов в инвентори файле `ansible/environments/stage/inventory` и переменную `db_host` в `stage/group_vars/app`
+
+Проверяем и применяем роли
+
+    ansible-playbook playbooks/site.yml --check
+    ansible-playbook playbooks/site.yml
+
+
+Удаляем `stage`
+СОздаем `prod`
+Изменяем внешние IP адреса инстансов в инвентори файле `ansible/environments/prod/inventory` и переменную `db_host` в `prod/group_vars/app`
+
+Проверяем и применяем роли
+
+    ansible-playbook -i environments/prod/inventory playbooks/site.yml --check
+    ansible-playbook -i environments/prod/inventory playbooks/site.yml
+
+Создадим файлы `environments/stage/requirements.yml` и `environments/prod/requirements.yml`
+
+    ---
+    - src: jdauphant.nginx
+      version: v2.18.1
+
+Установим роль: `ansible-galaxy install -r environments/stage/requirements.yml`
+
+Поучили ошибку:
+
+    Failed to get data from the API server (https://galaxy.ansible.com/api/): Failed to validate the SSL certificate for galaxy.ansible.com:443. Make sure your managed systems have a valid CA certificate installed
+
+Решаем проблему:
+
+    sudo python -m pip install pip==9.0.1
+    sudo pip install -U urllib3[secure]
+
+Изменим `.gitignore` добавимм строку `jdauphant.nginx`
+Открываем 80 порт `terraform\satge\main.yml` и `terraform\prod\main.yml` добавляем тег `http-server`
+
+    module "app" {
+	...
+	tags                       = ["reddit-app-stage", "http-server"]
+	...
+    }
+
+Применяем инфрраструктуру
+Добавляем переменные для `jdauphant.nginx` в `stage/group_vars/app и prod/group_vars/app`
+
+    jdauphant_nginx_listen_port: 80
+    jdauphant_nginx_server_name: reddit
+    jdauphant_nginx_proxy_pass_port: 9292
+
+Добавляем запуск роли в `playbooks/app.yml`
+
+    roles:
+      - app
+      - jdauphant.nginx
+        nginx_sites:
+          default:
+            - listen {{ jdauphant_nginx_listen_port }}
+            - server_name {{ jdauphant_nginx_server_name }}
+            - |
+              location / {
+                proxy_pass http://127.0.0.1:{{ jdauphant_nginx_proxy_pass_port }};
+              }
+
+При проверке выдает ошибку
+
+    failed: [appserver] (item={'value': [u'listen 80', u'server_name reddit', u'location / {\n  proxy_pass http://127.0.0.1:9292;\n}\n'], 'key': u'default'}) => {"changed": false, "item": {"key": "default", "value": ["listen 80", "server_name reddit", "location / {\n  proxy_pass http://127.0.0.1:9292;\n}\n"]}, "msg": "src file does not exist, use \"force=yes\" if you really want to create the link: /etc/nginx/sites-available/default.conf", "path": "/etc/nginx/sites-enabled/default.conf", "src": "/etc/nginx/sites-available/default.conf", "state": "absent"}
+
+При прямом запуске все проходит успешно
+
+### Работа с Ansible Vault
+Создаем `vault.key`
+Добавляем в `ansible.cfg`
+
+    [defailt]
+    ...
+    vault_password_file = vault.key
+
+Создаем плейбук для создания пользователей `ansible/playbooks/users.yml`
+
+    ---
+    - name: Create users
+      hosts: all
+      become: true
+
+      vars_files:
+	- "{{ inventory_dir }}/credentials.yml"
+
+      tasks:
+	- name: create users
+          user:
+    	    name: "{{ item.key }}"
+    	    password: "{{ item.value.password|password_hash('sha512', 65534|random(seed=inventory_hostname)|string) }}"
+    	    groups: "{{ item.value.groups | default(omit) }}"
+    	  with_dict: "{{ credentials.users }}"
+
+Создаем файл `ansible/environments/prod/credentials.yml`
+
+    ---
+    credentials:
+	users:
+	    admin:
+    	    password: admin123
+    	    groups: sudo
+
+Создаем файл `ansible/environments/stage/credentials.yml`
+
+    ---
+    credentials:
+	users:
+	    admin:
+    	    password: qwerty123
+    	    groups: sudo
+
+    qauser:
+      password: test123
+
+Шифруем файлы
+
+    ansible-vault encrypt environments/prod/credentials.yml
+    ansible-vault encrypt environments/stage/credentials.yml
+
+Применяем конфигурацию
+
+    ansible-playbook playbooks/site.yml
+
+### Задание *
+
+Изменен скрипт `inventory.rb` сделана проверка в каком окружении он запущен и исходя из этого, берутся нужные переменны из терраформ.
+Скрипт помещен в `environments/stage/` и `environments/prod/`
+Запуск
+
+    ansible-playbook -i ./environments/stage/inventory.rb playbooks/site.yml
+    ansible-playbook -i ./environments/prod/inventory.rb playbooks/site.yml

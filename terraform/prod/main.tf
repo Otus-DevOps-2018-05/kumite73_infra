@@ -10,7 +10,7 @@ module "app" {
   zone                       = "${var.zone}"
   app_disk_image             = "${var.app_disk_image}"
   app_name                   = "reddit-app-prod"
-  tags                       = ["reddit-app-prod"]
+  tags                       = ["reddit-app-prod", "http-server"]
   reddit_app_ip_name         = "reddit-app-prod-ip"
   firewall_puma_name         = "firefall-puma-prod"
   firewall_puma_source_range = ["77.91.193.61/32"]
