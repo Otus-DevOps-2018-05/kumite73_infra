@@ -858,3 +858,263 @@ P.S. Начиная с версии 2.4 инструкцию `include` можн�
 
     ansible-playbook -i ./environments/stage/inventory.rb playbooks/site.yml
     ansible-playbook -i ./environments/prod/inventory.rb playbooks/site.yml
+
+
+
+## Ansible 4
+Устанавливаем `virtualbox`
+Устанавливаем `vagrant 1.9.8` Так-как я не смог добиться, чтобы 2 версия не падала с ошибкой
+
+    vagrant provision dbserver
+
+    ==> dbserver: Running provisioner: ansible...
+    dbserver: Running ansible-playbook...
+    ImportError: No module named site
+    Ansible failed to complete successfully. Any error output should be
+    visible above. Please fix these errors and try again.
+
+Добавляем следующие строки в `.gitignore`
+
+    # Vagrant & molecule
+    .vagrant/
+    *.log
+    *.pyc
+    .molecule
+    .cache
+    .pytest_cache
+
+Создаем файл `Vagrantfile`
+
+    Vagrant.configure("2") do |config|
+
+      config.vm.provider :virtualbox do |v|
+        v.memory = 512
+      end
+
+      config.vm.define "dbserver" do |db|
+        db.vm.box = "ubuntu/xenial64"
+        db.vm.hostname = "dbserver"
+        db.vm.network :private_network, ip: "10.10.10.10"
+      end
+
+      config.vm.define "appserver" do |app|
+        app.vm.box = "ubuntu/xenial64"
+        app.vm.hostname = "appserver"
+        app.vm.network :private_network, ip: "10.10.10.20"
+      end
+    end
+
+Выполняем `vagrant up`
+Смотрим скачанные образы `vagrant box list`
+Проверям статус VMs `vagrant status`
+Проверим SSH доступ к VM `vagrant ssh appserver`
+Добавим провижинер
+
+    db.vm.provision "ansible" do |ansible|
+      ansible.playbook = "playbooks/site.yml"
+      ansible.groups = {
+      "db" => ["dbserver"],
+      "db:vars" => {"mongo_bind_ip" => "0.0.0.0"}
+      }
+    end
+
+Запуск провижинера `vagrant provision dbserver`
+Создаем `base.yml` для установки питона
+
+    ---
+    - name: Check && install python
+      hosts: all
+      become: true
+      gather_facts: False
+
+      tasks:
+        - name: Install python for Ansible
+          raw: test -e /usr/bin/python || (apt -y update && apt install -y python-minimal)
+          changed_when: False
+
+Меняем `site.yml`
+
+    ---
+    - include: base.yml
+    - include: db.yml
+    - include: app.yml
+    - include: deploy.yml
+
+Проверяем `vagrant provision dbserver`
+Изменим роль `db`, добавив файл тасков `db/tasks/install_mongo.yml`
+
+    - name: Add APT key
+      apt_key:
+        id: "EA312927"
+        keyserver: keyserver.ubuntu.com
+      tags: install
+
+    - name: Add APT repository
+      apt_repository:
+        repo: deb [ arch=amd64,arm64 ] http://repo.mongodb.org/apt/ubuntu xenial/mongodb-org/3.2 multiverse
+        state: present
+      tags: install
+
+    - name: Install mongodb package
+      apt:
+        name: mongodb-org
+        state: present
+      tags: install
+
+    - name: Configure service supervisor
+      systemd:
+        name: mongod
+        enabled: yes
+        state: started
+      tags: install
+
+Создаем `db/tasks/config_mongo.yml`
+
+    ---
+    - name: Change mongo config file
+      template:
+        src: templates/mongod.conf.j2
+        dest: /etc/mongod.conf
+        mode: 0644
+      notify: restart mongod
+
+Меняем `db/tasks/main.yml`
+
+    ---
+    # tasks file for db
+
+    - name: Show info about the env this host belongs to
+      debug:
+        msg: "This host is in {{ env }} environment!!!"
+
+    - include: install_mongo.yml
+    - include: config_mongo.yml
+
+Проверяем `vagrant provision dbserver`
+Создаем `app/tasks/ruby.yml`
+
+    ---
+    - name: Install ruby and rubygems and required packages
+      apt: "name={{ item }} state=present"
+        with_items:
+          - ruby-full
+          - ruby-bundler
+          - build-essential
+        tags: ruby
+
+Создаем `app/tasks/puma.yml`
+
+    ---
+    - name: Add unit file for Puma
+      copy:
+        src: puma.service
+        dest: /etc/systemd/system/puma.service
+      notify: reload puma
+
+    - name: Add config for DB connection
+      template:
+        src: db_config.j2
+        dest: /home/appuser/db_config
+        owner: appuser
+        group: appuser
+
+      - name: enable puma
+        systemd: name=puma enabled=yes
+
+Меняем `app/tasks/main.yml`
+
+    ---
+    # tasks file for app
+
+    - name: Show info about the env this host belongs to
+      debug:
+        msg: "This host is in {{ env }} environment!!!"
+
+    - include: ruby.yml
+    - include: puma.yml
+
+Провижиним `appserver`
+
+    app.vm.provision "ansible" do |ansible|
+      ansible.playbook = "playbooks/site.yml"
+      ansible.groups = {
+      "app" => ["appserver"],
+      "app:vars" => { "db_host" => "10.10.10.10"}
+      }
+    end
+
+Проверяем `vagrant provision appserver`
+
+#### параметризуем модули
+
+Меняем `puma.yml`
+
+    ---
+    - name: Add unit file for Puma
+      template:
+        src: puma.service.j2
+        dest: /etc/systemd/system/puma.service
+      notify: reload puma
+
+    - name: Add config for DB connection
+      template:
+        src: db_config.j2
+        dest: "/home/{{ deploy_user }}/db_config"
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+
+    - name: enable puma
+      systemd: name=puma enabled=yes
+
+Перенносим его в `app/tasks/puma.yml`
+Меняем `ansible/playbooks/deploy.yml`
+
+    - name: Deploy App
+      hosts: app
+      vars:
+        deploy_user: appuser
+
+      tasks:
+        - name: Fetch the latest version of application code
+          git:
+            repo: 'https://github.com/express42/reddit.git'
+            dest: "/home/{{ deploy_user }}/reddit"
+            version: monolith
+          notify: restart puma
+
+        - name: bundle install
+          bundler:
+            state: present
+            chdir: "/home/{{ deploy_user }}/reddit"
+
+      handlers:
+        - name: restart puma
+          become: true
+          systemd: name=puma state=restarted
+
+Переопределяем переменные провиженера
+
+    ansible.extra_vars = {
+      "deploy_user" => "vargant"
+    }
+
+
+Проверка `vagrant provision appserver`
+
+### Задание со *
+
+Добавляем переменные в файл `/ansible/roles/app/vars/mailn.yml`
+
+    nginx_sites:
+      default:
+        - listen {{ jdauphant_nginx_listen_port }}
+        - server_name {{ jdauphant_nginx_server_name }}
+        - |
+          location / {
+            proxy_pass http://127.0.0.1:{{ jdauphant_nginx_proxy_pass_port }};
+          }
+
+Выполняем `vagrant provision appserver`
+
+### Тестирование роли
+
