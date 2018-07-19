@@ -1189,3 +1189,45 @@ P.S. Начиная с версии 2.4 инструкцию `include` можн�
     def test_mongo_listen_port(host):
         assert host.socket("tcp://0.0.0.0:27017").is_listening
 
+Запускаем тесты `molecule verify`
+
+Меняем плейбук `playbooks/packer_db.yml`
+
+    ---
+    - name: Install MongoDB 3.2
+      hosts: all
+      become: true
+      roles:
+        - db
+
+Запускаем билд `packer build -var-file=packer/variables.json packer/db.json`
+Не видит роли ansible
+Меняем `packer/packer_db.yml`
+
+    "provisioners": [{
+      "type": "ansible",
+      "playbook_file": "ansible/playbooks/packer_db.yml",
+      "ansible_env_vars": ["ANSIBLE_ROLES_PATH={{ pwd }}/ansible/roles"]   # Добавляем пути к ролям
+    }]
+
+Запускаем билд `packer build -var-file=packer/variables.json packer/db.json`
+
+Меняем плейбук `playbooks/packer_app.yml`
+
+    ---
+    - name: Install Ruby && Bundler
+      hosts: all
+      become: true
+      roles:
+        - app
+
+
+Меняем `packer/packer_app.yml`
+
+    "provisioners": [{
+      "type": "ansible",
+      "playbook_file": "ansible/playbooks/packer_app.yml",
+      "ansible_env_vars": ["ANSIBLE_ROLES_PATH={{ pwd }}/ansible/roles"]   # Добавляем пути к ролям
+    }]
+
+Запускаем билд `packer build -var-file=packer/variables.json packer/app.json`
