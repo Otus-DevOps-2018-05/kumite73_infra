@@ -863,7 +863,12 @@ P.S. Начиная с версии 2.4 инструкцию `include` можн�
 
 ## Ansible 4
 Устанавливаем `virtualbox`
-Устанавливаем `vagrant 1.9.8` Так-как я не смог добиться, чтобы 2 версия не падала с ошибкой
+Устанавливаем `vagrant 2.0.4` 
+
+    wget https://releases.hashicorp.com/vagrant/2.0.4/vagrant_2.0.4_x86_64.deb
+    sudo dpkg -i vagrant_2.0.4_x86_64.deb
+
+Так-как я не смог добиться, чтобы 2.1.2 версия не падала с ошибкой
 
     vagrant provision dbserver
 
@@ -1117,4 +1122,70 @@ P.S. Начиная с версии 2.4 инструкцию `include` можн�
 Выполняем `vagrant provision appserver`
 
 ### Тестирование роли
+
+Меняем `requirements.txt`
+
+    ansible>=2.4
+    molecule>=2.6
+    testinfra>=1.10
+    python-vagrant>=0.5.15
+
+Выполняем установку `pip install -r requirements.txt`
+
+Выполняем команду в директории с ролью `ansible/roles/db`
+
+    molecule init scenario --scenario-name default -r db -d vagrant
+
+Создаем `db/molecule/default/tests/test_default.py`
+
+    import os
+
+    import testinfra.utils.ansible_runner
+
+    testinfra_hosts = testinfra.utils.ansible_runner.AnsibleRunner(
+        os.environ['MOLECULE_INVENTORY_FILE']).get_hosts('all')
+
+    # check if MongoDB is enabled and running
+    def test_mongo_running_and_enabled(host):
+        mongo = host.service("mongod")
+        assert mongo.is_running
+        assert mongo.is_enabled
+
+    # check if configuration file contains the required line
+    def test_config_file(host):
+        config_file = host.file('/etc/mongod.conf')
+        assert config_file.contains('bindIp: 0.0.0.0')
+        assert config_file.is_file
+
+
+Запускаем в директории `ansible/roles/db`
+
+    molecule create
+
+Подключиться по SSH
+
+    molecule login -h instance
+
+Изменяем `db/molecule/default/playbook.yml`
+
+    ---
+    - name: Converge
+      become: true
+      hosts: all
+      vars:
+        mongo_bind_ip: 0.0.0.0
+      roles:
+        - role: db
+
+Применим `playbook.yml`
+
+    molecule converge
+
+Запускаем тесты `molecule verify`
+
+Добавим в файл новый тест `db/molecule/default/tests/test_default.py`
+
+    # check if MongoDB is listening port
+    def test_mongo_listen_port(host):
+        assert host.socket("tcp://0.0.0.0:27017").is_listening
 
